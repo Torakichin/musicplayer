@@ -1,0 +1,183 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Modern Music Player</title>
+    <link rel="manifest" href="manifest.json">
+    <meta name="theme-color" content="#302b63">
+    <style>
+        /* 前回のスタイルを継承しつつ追加・修正 */
+        :root { --primary-color: #00d2ff; --accent-color: #ff6800; --bg-gradient: linear-gradient(135deg, #0f0c29, #302b63, #24243e); --glass-bg: rgba(255, 255, 255, 0.1); --text-color: #ffffff; }
+        body { margin: 0; font-family: 'Helvetica Neue', Arial, sans-serif; background: var(--bg-gradient); background-attachment: fixed; height: 100vh; display: flex; align-items: center; justify-content: center; color: var(--text-color); overflow: hidden; }
+        .appframe { background: var(--glass-bg); backdrop-filter: blur(15px); -webkit-backdrop-filter: blur(15px); width: 380px; padding: 30px; border-radius: 24px; border: 1px solid rgba(255, 255, 255, 0.2); box-shadow: 0 25px 45px rgba(0, 0, 0, 0.3); text-align: center; }
+        
+        h1 { font-size: 1.5rem; margin-bottom: 20px; font-weight: 300; letter-spacing: 2px; color: var(--primary-color); text-shadow: 0 0 10px rgba(0, 210, 255, 0.5); }
+        .visualizer { width: 150px; height: 150px; margin: 0 auto 20px; border-radius: 50%; overflow: hidden; border: 4px solid var(--glass-bg); box-shadow: 0 0 20px rgba(0,0,0,0.2); transition: transform 0.5s ease; }
+        .visualizer img { width: 100%; height: 100%; object-fit: cover; }
+        .playing-art { animation: rotate 10s linear infinite; }
+        @keyframes rotate { from { transform: rotate(0deg); } to { transform: rotate(360deg); } }
+        
+        audio { width: 100%; height: 40px; margin-bottom: 20px; filter: invert(100%) hue-rotate(180deg) brightness(1.5); }
+
+        /* シャッフルボタンのスタイル */
+        .controls-area { margin-bottom: 20px; display: flex; justify-content: center; align-items: center; gap: 10px; }
+        .toggle-btn {
+            background: rgba(255, 255, 255, 0.1);
+            border: 1px solid var(--primary-color);
+            color: var(--primary-color);
+            padding: 8px 16px;
+            border-radius: 20px;
+            cursor: pointer;
+            font-size: 0.8rem;
+            transition: all 0.3s;
+        }
+        .toggle-btn.active {
+            background: var(--primary-color);
+            color: #000;
+            box-shadow: 0 0 15px var(--primary-color);
+        }
+
+        ul { list-style: none; padding: 0; margin: 0; max-height: 200px; overflow-y: auto; text-align: left; }
+        ul::-webkit-scrollbar { width: 5px; }
+        ul::-webkit-scrollbar-thumb { background: rgba(255,255,255,0.2); border-radius: 10px; }
+        li { padding: 12px 15px; margin-bottom: 8px; background: rgba(255, 255, 255, 0.05); border-radius: 12px; cursor: pointer; transition: all 0.2s ease; display: flex; align-items: center; border: 1px solid transparent; font-size: 0.9rem; }
+        li:hover { background: rgba(255, 255, 255, 0.15); transform: translateX(5px); }
+        li::before { content: '▶'; font-size: 0.7rem; margin-right: 10px; opacity: 0.5; }
+        li.active { background: rgba(0, 210, 255, 0.2); border: 1px solid var(--primary-color); color: var(--primary-color); font-weight: bold; }
+        li.active::before { content: '♫'; opacity: 1; }
+    </style>
+</head>
+<body>
+
+    <div class="appframe">
+        <h1 id="currentTitle">Music Player</h1>
+        
+        <div class="visualizer" id="artWrapper">
+            <img id="statusImg" src="pict_stop.png" alt="再生状態">
+        </div>
+
+        <audio id="mainAudio" controls></audio>
+        
+        <div class="controls-area">
+            <button id="shuffleBtn" class="toggle-btn">Shuffle OFF</button>
+        </div>
+
+        <ul id="playlist">
+            </ul>
+    </div>
+
+    <script>
+        /* 1. 設定：ここにファイル名を追加するだけ！ */
+        const songFiles = [
+
+  'BLUE TEARS_JUDY AND MARY.mp3',
+  'breakfast_Mrs. GREEN APPLE.mp3',
+  'DEPARTURES_globe.mp3',
+  'LOVER SOUL_JUDY AND MARY.mp3',
+  'あいのうた_Swallowtail Butterfly.mp3',
+  'ギブス_椎名林檎.mp3',
+  'きらり_藤井風.mp3',
+  'ダンスホール_Mrs. GREEN APPLE.mp3',
+  'なんなん_藤井風.mp3',
+  'ライラック_Mrs. GREEN APPLE.mp3',
+  '花_藤井風.mp3',
+  '幸福論_椎名林檎.mp3',
+  '新宝島_サカナクション.mp3',
+  '青と夏_Mrs. GREEN APPLE.mp3',
+  '僕と花_サカナクション.mp3',
+  '夜の踊り子_サカナクション.mp3'
+
+        ];
+
+        const musicFolder = './music/'; // 音楽ファイルのフォルダパス
+
+        /* 2. 初期変数 */
+        const audio = document.getElementById('mainAudio');
+        const playlistElem = document.getElementById('playlist');
+        const shuffleBtn = document.getElementById('shuffleBtn');
+        const img = document.getElementById('statusImg');
+        const artWrapper = document.getElementById('artWrapper');
+        let isShuffle = false;
+        let currentIndex = 0;
+
+        /* 3. プレイリストの自動生成 */
+        function initPlaylist() {
+            playlistElem.innerHTML = '';
+            songFiles.forEach((file, index) => {
+                const li = document.createElement('li');
+                // ファイル名から拡張子を除去して曲名にする
+                const songName = file.replace(/\.[^/.]+$/, "");
+                li.textContent = songName;
+                li.setAttribute('data-index', index);
+                if(index === 0) li.classList.add('active');
+                
+                li.addEventListener('click', () => playMusic(index));
+                playlistElem.appendChild(li);
+            });
+            // 最初の曲をセット
+            loadMusic(0);
+        }
+
+        function loadMusic(index) {
+            currentIndex = index;
+            audio.src = musicFolder + songFiles[index];
+            
+            // UIの更新
+            document.querySelectorAll('li').forEach(li => li.classList.remove('active'));
+            const activeLi = document.querySelector(`li[data-index="${index}"]`);
+            if(activeLi) activeLi.classList.add('active');
+        }
+
+        function playMusic(index) {
+            loadMusic(index);
+            audio.play();
+        }
+
+        /* 4. シャッフル切り替え */
+        shuffleBtn.addEventListener('click', () => {
+            isShuffle = !isShuffle;
+            shuffleBtn.classList.toggle('active');
+            shuffleBtn.textContent = isShuffle ? 'Shuffle ON' : 'Shuffle OFF';
+        });
+
+        /* 5. オーディオイベント */
+        audio.addEventListener('play', () => {
+            img.src = 'pict_play.png';
+            artWrapper.classList.add('playing-art');
+        });
+
+        audio.addEventListener('pause', () => {
+            img.src = 'pict_stop.png';
+            artWrapper.classList.remove('playing-art');
+        });
+
+        audio.addEventListener('ended', () => {
+            if (isShuffle) {
+                // ランダムに次を選ぶ（今の曲以外）
+                let nextIndex;
+                do {
+                    nextIndex = Math.floor(Math.random() * songFiles.length);
+                } while (nextIndex === currentIndex && songFiles.length > 1);
+                playMusic(nextIndex);
+            } else {
+                // 通常の次へ
+                let nextIndex = currentIndex + 1;
+                if (nextIndex < songFiles.length) {
+                    playMusic(nextIndex);
+                }
+            }
+        });
+
+        // サービスワーカー登録
+        if ('serviceWorker' in navigator) {
+            window.addEventListener('load', () => {
+                navigator.serviceWorker.register('./sw.js');
+            });
+        }
+
+        // 初期化実行
+        initPlaylist();
+    </script>
+</body>
+</html>
